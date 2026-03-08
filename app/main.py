@@ -112,3 +112,34 @@ async def get_current_rates(
         return {"base": data["base"], "date": data["date"], "rates": data["rates"]}
     except ExchangeRateError as e:
         raise HTTPException(status_code=502, detail=str(e)) from e
+
+@app.get("/api/rates/analytics/extremes", tags=["Exchange Rates"])
+async def get_strongest_and_weakest(
+    base: str = Query("EUR", description="Base currency (e.g., EUR, CZK)"),
+    _current_user: str = Depends(get_current_user)
+):
+    """
+    FR2 & FR3: Getting the strongest and weakest currency compared to the base currency.
+    """
+    try:
+        data = await ExchangeService.get_latest_rates(base)
+        rates = data.get("rates", {})
+
+        if not rates:
+            raise HTTPException(
+                status_code=404,
+                detail="No exchange rates available for the specified base currency."
+            )
+
+        # Nalezení maxima a minima
+        strongest_currency = max(rates.items(), key=lambda x: x[1])
+        weakest_currency = min(rates.items(), key=lambda x: x[1])
+
+        return {
+            "base": base,
+            "date": data["date"],
+            "strongest": {"currency": strongest_currency[0], "value": strongest_currency[1]},
+            "weakest": {"currency": weakest_currency[0], "value": weakest_currency[1]}
+        }
+    except ExchangeRateError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
