@@ -42,3 +42,19 @@ class ExchangeService:
             except httpx.HTTPError as e:
                 logger.error(f"Error occurred while communicating with API: {str(e)}")
                 raise ExchangeRateError("Failed to retrieve current exchange rates") from e
+
+    @staticmethod
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
+    async def get_historical_rates(base: str, start_date: str, end_date: str, symbols: list[str]) -> dict:
+        """Auxiliary method for FR4 - Obtaining history for a period."""
+        symbols_str = ",".join(symbols)
+        url = f"{settings.api_url}/{start_date}..{end_date}?base={base}&symbols={symbols_str}"
+        
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.get(url, timeout=5.0)
+                response.raise_for_status()
+                return response.json()
+            except httpx.HTTPError as e:
+                logger.error(f"Error occurred while fetching historical data: {str(e)}")
+                raise ExchangeRateError("Failed to retrieve historical exchange rates") from e
