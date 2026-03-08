@@ -35,6 +35,10 @@ jobs:
         run: pylint app tests
 
       - name: Test
+        env:
+            ADMIN_USERNAME: test_admin
+            ADMIN_PASSWORD: test_password
+            JWT_SECRET_KEY: test_secret_key_pro_testovani
         run: pytest --cov=app --cov-report=xml
 
       - name: Build Docker image
