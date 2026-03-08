@@ -36,10 +36,18 @@ jobs:
 
       - name: Test
         env:
-            ADMIN_USERNAME: test_admin
-            ADMIN_PASSWORD: test_password
-            JWT_SECRET_KEY: test_secret_key_pro_testovani
-        run: pytest --cov=app --cov-report=xml
+          ADMIN_USERNAME: test_admin
+          ADMIN_PASSWORD: test_password
+          JWT_SECRET_KEY: test_secret_key
+        run: pytest --cov=app --cov-report=xml --cov-report=html
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-coverage-report
+          path: |
+            coverage.xml
+            htmlcov/
 
       - name: Build Docker image
         run: docker build -t backend_exchange:${{ github.sha }} .
