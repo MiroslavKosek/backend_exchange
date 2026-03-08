@@ -1,23 +1,25 @@
-from fastapi.security import OAuth2PasswordRequestForm
-from fastapi import FastAPI, Depends, HTTPException, status, Query
-from fastapi import Request
-from contextlib import asynccontextmanager
+"""FastAPI application entrypoint."""
 
+from contextlib import asynccontextmanager
 from datetime import timedelta
 from time import perf_counter
 from uuid import uuid4
 
-from app.logger import logger, reset_request_id, set_request_id
-from app.config import settings
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, status
+from fastapi.security import OAuth2PasswordRequestForm
+
 from app.auth import (
-    get_current_user,
+    ACCESS_TOKEN_EXPIRE_MINUTES,
     create_access_token,
-    ACCESS_TOKEN_EXPIRE_MINUTES
+    get_current_user,
 )
+from app.config import settings
+from app.logger import logger, reset_request_id, set_request_id
 from app.services.exchange import ExchangeService, ExchangeRateError
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(_app: FastAPI):
+    """Log startup and shutdown lifecycle events."""
     # Startup
     logger.info("Application starting...")
     logger.info(f"Connecting to API: {settings.api_url}")
@@ -29,12 +31,12 @@ app = FastAPI(
     title="Exchange Rate API Backend",
     description="Semestral project - Backend for exchange rate application",
     version="1.0.0",
-    lifespan=lifespan
+    lifespan=lifespan,
 )
-
 
 @app.middleware("http")
 async def request_id_middleware(request: Request, call_next):
+    """Attach request id to logs and response headers for traceability."""
     request_id = request.headers.get("X-Request-ID") or str(uuid4())
     start = perf_counter()
     token = set_request_id(request_id)
@@ -54,11 +56,18 @@ async def request_id_middleware(request: Request, call_next):
 
 @app.get("/")
 async def root():
+    """Return a simple welcome message and docs hint."""
     logger.info("User visited the root endpoint.")
-    return {"message": "Welcome to the Exchange Rate API Backend. Documentation is available at /docs"}
+    return {
+        "message": (
+            "Welcome to the Exchange Rate API Backend. "
+            "Documentation is available at /docs"
+        )
+    }
 
 @app.get("/health")
 async def health_check():
+    """Healthcheck endpoint used by monitors and orchestrators."""
     return {"status": "ok"}
 
 @app.post("/token", tags=["Auth"])
@@ -66,10 +75,15 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
     """
     This endpoint handles user login and token generation.
     It validates the provided username and password.
-    If the credentials are valid, it generates a JWT access token and returns it to the client.
-    If the credentials are invalid, it raises an HTTP 401 Unauthorized exception.
+    If the credentials are valid, it generates a JWT access token
+    and returns it to the client.
+    If the credentials are invalid, it raises
+    an HTTP 401 Unauthorized exception.
     """
-    if form_data.username != settings.admin_username or form_data.password != settings.admin_password:
+    if (
+        form_data.username != settings.admin_username
+        or form_data.password != settings.admin_password
+    ):
         logger.warning(f"Failed login attempt for user: {form_data.username}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -88,7 +102,7 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
 @app.get("/api/rates/latest", tags=["Exchange Rates"])
 async def get_current_rates(
     base: str = Query("EUR", description="Base currency (e.g., EUR, CZK)"),
-    current_user: str = Depends(get_current_user)
+    _current_user: str = Depends(get_current_user),
 ):
     """
     FR1: Getting current exchange rates.
@@ -97,4 +111,4 @@ async def get_current_rates(
         data = await ExchangeService.get_latest_rates(base)
         return {"base": data["base"], "date": data["date"], "rates": data["rates"]}
     except ExchangeRateError as e:
-        raise HTTPException(status_code=502, detail=str(e))
+        raise HTTPException(status_code=502, detail=str(e)) from e

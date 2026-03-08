@@ -40,5 +40,5 @@ class ExchangeService:
                 rates_cache[cache_key] = data
                 return data
             except httpx.HTTPError as e:
-                logger.error(f"Error occurred while communicating with Frankfurter API: {str(e)}")
+                logger.error(f"Error occurred while communicating with API: {str(e)}")
                 raise ExchangeRateError("Failed to retrieve current exchange rates") from e
