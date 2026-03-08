@@ -131,7 +131,7 @@ async def get_strongest_and_weakest(
                 detail="No exchange rates available for the specified base currency."
             )
 
-        # Nalezení maxima a minima
+        # Find the strongest and weakest currency based on the exchange rates
         strongest_currency = max(rates.items(), key=lambda x: x[1])
         weakest_currency = min(rates.items(), key=lambda x: x[1])
 
