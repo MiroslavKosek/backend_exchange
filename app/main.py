@@ -1,5 +1,5 @@
 from fastapi.security import OAuth2PasswordRequestForm
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, status, Query
 from fastapi import Request
 from contextlib import asynccontextmanager
 
@@ -10,9 +10,11 @@ from uuid import uuid4
 from app.logger import logger, reset_request_id, set_request_id
 from app.config import settings
 from app.auth import (
+    get_current_user,
     create_access_token,
     ACCESS_TOKEN_EXPIRE_MINUTES
 )
+from app.services.exchange import ExchangeService, ExchangeRateError
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -82,3 +84,17 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
 
     logger.info(f"User {form_data.username} logged in successfully.")
     return {"access_token": access_token, "token_type": "bearer"}
+
+@app.get("/api/rates/latest", tags=["Exchange Rates"])
+async def get_current_rates(
+    base: str = Query("EUR", description="Base currency (e.g., EUR, CZK)"),
+    current_user: str = Depends(get_current_user)
+):
+    """
+    FR1: Getting current exchange rates.
+    """
+    try:
+        data = await ExchangeService.get_latest_rates(base)
+        return {"base": data["base"], "date": data["date"], "rates": data["rates"]}
+    except ExchangeRateError as e:
+        raise HTTPException(status_code=502, detail=str(e))
