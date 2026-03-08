@@ -1,3 +1,9 @@
+"""Endpoint tests for auth token issuance."""
+
+# Pylint may not resolve app imports from conftest path setup in test runs.
+# Pytest fixture parameter names intentionally shadow fixture definitions.
+# pylint: disable=import-error,missing-function-docstring,redefined-outer-name
+
 from datetime import datetime, timezone
 
 import jwt

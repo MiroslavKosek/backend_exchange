@@ -1,4 +1,4 @@
-"""Tests for exchange service behavior and latest-rates endpoint."""
+"""Tests for exchange service behavior and latest rates endpoint."""
 
 # Pylint in this setup may not resolve app imports from conftest path injection.
 # For pytest tests, short helper functions/classes are intentionally compact.
