@@ -24,8 +24,11 @@ pluggy==1.6.0
 pydantic==2.12.5
 pydantic_core==2.41.5
 Pygments==2.19.2
+PyJWT==2.11.0
 pylint==4.0.5
 pytest==9.0.2
+pytest-cov==7.0.0
+python-multipart==0.0.22
 python-dotenv==1.2.2
 starlette==0.52.1
 tomlkit==0.14.0
