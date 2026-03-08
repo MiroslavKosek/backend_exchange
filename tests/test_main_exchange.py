@@ -1,3 +1,9 @@
+"""Endpoint tests for exchange analytics routes."""
+
+# Pylint may not resolve app imports from conftest path setup in test context.
+# Pytest fixture argument shadowing and terse test helpers are intentional.
+# pylint: disable=import-error,missing-function-docstring,redefined-outer-name
+
 import pytest
 from fastapi.testclient import TestClient
 

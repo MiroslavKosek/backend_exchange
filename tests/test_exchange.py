@@ -1,3 +1,9 @@
+"""Tests for exchange service behavior and latest rates endpoint."""
+
+# Pylint in this setup may not resolve app imports from conftest path injection.
+# For pytest tests, short helper functions/classes are intentionally compact.
+# pylint: disable=import-error,missing-function-docstring,missing-class-docstring,redefined-outer-name
+
 import asyncio
 
 import httpx
@@ -74,7 +80,11 @@ def test_get_latest_rates_converts_http_error_to_domain_error(monkeypatch: pytes
 
     class FailingResponse:
         def raise_for_status(self):
-            raise httpx.HTTPStatusError("bad status", request=request, response=httpx.Response(500, request=request))
+            raise httpx.HTTPStatusError(
+                "bad status",
+                request=request,
+                response=httpx.Response(500, request=request),
+            )
 
         def json(self):
             return {}
@@ -94,7 +104,10 @@ def test_get_latest_rates_converts_http_error_to_domain_error(monkeypatch: pytes
     with pytest.raises(ExchangeRateError, match="Failed to retrieve current exchange rates"):
         asyncio.run(ExchangeService.get_latest_rates("EUR"))
 
-def test_latest_rates_endpoint_returns_data_for_authorized_user(exchange_client: TestClient, monkeypatch: pytest.MonkeyPatch):
+def test_latest_rates_endpoint_returns_data_for_authorized_user(
+    exchange_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+):
     async def fake_get_latest_rates(base: str) -> dict:
         return {"base": base, "date": "2026-03-08", "rates": {"CZK": 25.0}}
 

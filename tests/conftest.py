@@ -1,3 +1,5 @@
+"""Pytest configuration ensuring project root is importable in tests."""
+
 import sys
 from pathlib import Path
 
