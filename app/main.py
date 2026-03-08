@@ -54,7 +54,7 @@ async def request_id_middleware(request: Request, call_next):
     response.headers["X-Request-ID"] = request_id
     return response
 
-@app.get("/")
+@app.get("/", tags=["General"])
 async def root():
     """Return a simple welcome message and docs hint."""
     logger.info("User visited the root endpoint.")
@@ -65,13 +65,13 @@ async def root():
         )
     }
 
-@app.get("/health")
+@app.get("/health", tags=["General"])
 async def health_check():
     """Healthcheck endpoint used by monitors and orchestrators."""
     return {"status": "ok"}
 
 @app.post("/token", tags=["Auth"])
-async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
+async def login(form_data: OAuth2PasswordRequestForm = Depends()):
     """
     This endpoint handles user login and token generation.
     It validates the provided username and password.
@@ -114,7 +114,7 @@ async def get_current_rates(
         raise HTTPException(status_code=502, detail=str(e)) from e
 
 @app.get("/api/rates/analytics/extremes", tags=["Exchange Rates"])
-async def get_strongest_and_weakest(
+async def get_strongest_and_weakest_rates(
     base: str = Query("EUR", description="Base currency (e.g., EUR, CZK)"),
     _current_user: str = Depends(get_current_user),
 ):
