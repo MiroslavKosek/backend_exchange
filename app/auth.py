@@ -1,7 +1,11 @@
-import jwt
+"""JWT authentication helpers for FastAPI endpoints."""
+
 from datetime import datetime, timedelta, timezone
+
+import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
+
 from app.config import settings
 
 ALGORITHM = "HS256"
@@ -28,8 +32,10 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None):
 async def get_current_user(token: str = Depends(oauth2_scheme)):
     """
     This function decodes the JWT token and validates it.
-    It checks if the token is valid and if the username in the token matches the hardcoded admin username.
-    If the token is invalid or the username does not match, it raises an HTTP 401 Unauthorized exception.
+    It checks if the token is valid and if the username in the token
+    matches the hardcoded admin username.
+    If the token is invalid or the username does not match,
+    it raises an HTTP 401 Unauthorized exception.
     """
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -41,8 +47,8 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
         username: str = str(payload.get("sub"))
         if username is None:
             raise credentials_exception
-    except jwt.InvalidTokenError:
-        raise credentials_exception
+    except jwt.InvalidTokenError as exc:
+        raise credentials_exception from exc
 
     if username != settings.admin_username:
         raise credentials_exception
