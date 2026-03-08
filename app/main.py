@@ -54,7 +54,7 @@ async def request_id_middleware(request: Request, call_next):
     response.headers["X-Request-ID"] = request_id
     return response
 
-@app.get("/")
+@app.get("/", tags=["General"])
 async def root():
     """Return a simple welcome message and docs hint."""
     logger.info("User visited the root endpoint.")
@@ -65,13 +65,13 @@ async def root():
         )
     }
 
-@app.get("/health")
+@app.get("/health", tags=["General"])
 async def health_check():
     """Healthcheck endpoint used by monitors and orchestrators."""
     return {"status": "ok"}
 
 @app.post("/token", tags=["Auth"])
-async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
+async def login(form_data: OAuth2PasswordRequestForm = Depends()):
     """
     This endpoint handles user login and token generation.
     It validates the provided username and password.
@@ -114,12 +114,13 @@ async def get_current_rates(
         raise HTTPException(status_code=502, detail=str(e)) from e
 
 @app.get("/api/rates/analytics/extremes", tags=["Exchange Rates"])
-async def get_strongest_and_weakest(
+async def get_strongest_and_weakest_rates(
     base: str = Query("EUR", description="Base currency (e.g., EUR, CZK)"),
-    _current_user: str = Depends(get_current_user)
+    _current_user: str = Depends(get_current_user),
 ):
     """
-    FR2 & FR3: Getting the strongest and weakest currency compared to the base currency.
+    FR2 & FR3: Getting the strongest and weakest currency
+    compared to the base currency.
     """
     try:
         data = await ExchangeService.get_latest_rates(base)
@@ -138,8 +139,64 @@ async def get_strongest_and_weakest(
         return {
             "base": base,
             "date": data["date"],
-            "strongest": {"currency": strongest_currency[0], "value": strongest_currency[1]},
-            "weakest": {"currency": weakest_currency[0], "value": weakest_currency[1]}
+            "strongest": {
+                "currency": strongest_currency[0],
+                "value": strongest_currency[1],
+            },
+            "weakest": {
+                "currency": weakest_currency[0],
+                "value": weakest_currency[1],
+            },
+        }
+    except ExchangeRateError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
+
+@app.get("/api/rates/analytics/average", tags=["Exchange Rates"])
+async def get_average_rates(
+    start_date: str = Query(..., description="Start date (YYYY-MM-DD)"),
+    end_date: str = Query(..., description="End date (YYYY-MM-DD)"),
+    symbols: list[str] = Query(
+        ..., description="List of currencies for averaging (e.g., USD, CZK)"
+    ),
+    base: str = Query("EUR", description="Base currency (e.g., EUR, CZK)"),
+    _current_user: str = Depends(get_current_user),
+):
+    """
+    FR4: Average of selected currencies for a defined period.
+    Calculates the arithmetic mean from available daily values
+    (ignores days without data, e.g., weekends).
+    """
+    try:
+        data = await ExchangeService.get_historical_rates(base, start_date, end_date, symbols)
+        rates_history = data.get("rates", {})
+
+        if not rates_history:
+            return {"message": "No data available for the specified period."}
+
+        # Initialization of structures for sums and counts of days
+        sums = {symbol: 0.0 for symbol in symbols}
+        counts = {symbol: 0 for symbol in symbols}
+
+        # Browsing history and counting (solves the problem of missing data on certain days)
+        for _date, daily_rates in rates_history.items():
+            for symbol in symbols:
+                if symbol in daily_rates:
+                    sums[symbol] += daily_rates[symbol]
+                    counts[symbol] += 1
+
+        # Calculation of the average
+        averages = {}
+        for symbol in symbols:
+            if counts[symbol] > 0:
+                averages[symbol] = round(sums[symbol] / counts[symbol], 4)
+            else:
+                # No data available for this currency in the specified period.
+                averages[symbol] = None
+
+        return {
+            "base": base,
+            "period": {"start": start_date, "end": end_date},
+            "averages": averages
         }
     except ExchangeRateError as e:
         raise HTTPException(status_code=502, detail=str(e)) from e
