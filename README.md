@@ -104,13 +104,13 @@ Default `config.json`:
 }
 ```
 
-Required settings:
+**Required settings:**
 - `admin_username`
 - `admin_password`
 - `jwt_secret_key`
-
-Optional settings:
 - `api_url`
+
+**Optional settings:**
 - `environment` (`development` or `production`)
 - `logging.level`
 - `logging.filename`

@@ -1,14 +1,14 @@
 # ==========================================
 # BUILDER
 # ==========================================
-FROM python:3.14-alpine AS builder
+FROM python:3.14-slim AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
-WORKDIR /build
+RUN apt-get update && apt-get install -y --no-install-recommends gcc build-essential
 
-RUN apk add --no-cache gcc musl-dev libffi-dev build-base
+WORKDIR /build
 
 RUN python -m venv /opt/venv
 
@@ -21,7 +21,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # ==========================================
 # RUNNER
 # ==========================================
-FROM python:3.14-alpine AS runner
+FROM python:3.14-slim AS runner
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -34,9 +34,8 @@ COPY --from=builder /opt/venv /opt/venv
 COPY . .
 
 RUN mkdir -p logs && \
-    addgroup -S appgroup && \
-    adduser -S appuser -G appgroup && \
-    chown -R appuser:appgroup /app logs
+    adduser --disabled-password --gecos "" appuser && \
+    chown -R appuser:appuser /app
 
 USER appuser
 
