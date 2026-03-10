@@ -27,7 +27,21 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PATH="/opt/venv/bin:$PATH"
 
+RUN apt-get update && apt-get install -y --no-install-recommends openssh-server
+
 WORKDIR /app
+
+RUN echo "root:Docker!" | chpasswd
+
+RUN ssh-keygen -A
+
+COPY ./sshd_config /etc/ssh/.
+
+EXPOSE 2222 80
+
+COPY ./start.sh start.sh
+
+RUN chmod +x ./start.sh
 
 COPY --from=builder /opt/venv /opt/venv
 
@@ -37,9 +51,8 @@ RUN mkdir -p logs && \
     adduser --disabled-password --gecos "" appuser && \
     chown -R appuser:appuser /app
 
-USER appuser
-
 EXPOSE 8000
 
+ENTRYPOINT ["./start.sh"]
 
-CMD ["sh", "-c", "exec gunicorn app.main:app --bind 0.0.0.0:8000 --worker-class uvicorn.workers.UvicornWorker --workers $((2 * $(nproc) + 1))"]
+CMD ["gunicorn", "app.main:app", "--bind", "0.0.0.0:8000", "--worker-class", "uvicorn.workers.UvicornWorker"]
