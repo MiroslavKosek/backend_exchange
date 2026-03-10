@@ -39,13 +39,11 @@ COPY ./sshd_config /etc/ssh/.
 
 EXPOSE 2222 80
 
-COPY ./start.sh start.sh
-
-RUN chmod +x ./start.sh
-
 COPY --from=builder /opt/venv /opt/venv
 
 COPY . .
+
+RUN sed -i 's/\r//' ./start.sh && chmod +x ./start.sh
 
 RUN mkdir -p logs && \
     adduser --disabled-password --gecos "" appuser && \
