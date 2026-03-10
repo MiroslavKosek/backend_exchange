@@ -29,7 +29,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-origins = ["http://localhost:4200", "https://miroslavkosek.github.io/frontend_exchange/"]
+origins = ["http://localhost:4200/", "https://miroslavkosek.github.io/frontend_exchange/"]
 app.add_middleware(
     CORSMiddleware,  # ty:ignore[invalid-argument-type]
     allow_origins=origins,
