@@ -104,6 +104,88 @@ def test_get_latest_rates_converts_http_error_to_domain_error(monkeypatch: pytes
     with pytest.raises(ExchangeRateError, match="Failed to retrieve current exchange rates"):
         asyncio.run(ExchangeService.get_latest_rates("EUR"))
 
+def test_get_available_currencies_returns_cached_data_without_http_call(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    cached = {"USD": "United States Dollar", "CZK": "Czech Koruna"}
+    rates_cache["currencies"] = cached
+
+    class ShouldNotBeCalledClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def get(self, *_args, **_kwargs):
+            raise AssertionError("HTTP client should not be called on cache hit")
+
+    monkeypatch.setattr(httpx, "AsyncClient", ShouldNotBeCalledClient)
+
+    data = asyncio.run(ExchangeService.get_available_currencies())
+
+    assert data == cached
+
+def test_get_available_currencies_fetches_and_caches_data(monkeypatch: pytest.MonkeyPatch):
+    expected = {"AUD": "Australian Dollar", "CHF": "Swiss Franc"}
+
+    class DummyResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return expected
+
+    class DummyAsyncClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def get(self, url: str, timeout: float):
+            assert url.endswith("/currencies")
+            assert timeout == 5.0
+            return DummyResponse()
+
+    monkeypatch.setattr(httpx, "AsyncClient", DummyAsyncClient)
+
+    data = asyncio.run(ExchangeService.get_available_currencies())
+
+    assert data == expected
+    assert rates_cache["currencies"] == expected
+
+def test_get_available_currencies_converts_http_error_to_domain_error(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    request = httpx.Request("GET", "https://example.test/currencies")
+
+    class FailingResponse:
+        def raise_for_status(self):
+            raise httpx.HTTPStatusError(
+                "bad status",
+                request=request,
+                response=httpx.Response(500, request=request),
+            )
+
+        def json(self):
+            return {}
+
+    class DummyAsyncClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def get(self, *_args, **_kwargs):
+            return FailingResponse()
+
+    monkeypatch.setattr(httpx, "AsyncClient", DummyAsyncClient)
+
+    with pytest.raises(ExchangeRateError, match="Failed to retrieve supported currencies"):
+        asyncio.run(ExchangeService.get_available_currencies())
+
 def test_latest_rates_endpoint_returns_data_for_authorized_user(
     exchange_client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
@@ -139,3 +221,55 @@ def test_latest_rates_endpoint_returns_502_on_exchange_service_error(
 
     assert response.status_code == 502
     assert response.json() == {"detail": "Failed to retrieve current exchange rates"}
+
+def test_currencies_endpoint_returns_data_for_authorized_user(
+    exchange_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    async def fake_get_available_currencies() -> dict:
+        return {"AUD": "Australian Dollar", "CAD": "Canadian Dollar"}
+
+    monkeypatch.setattr(
+        ExchangeService,
+        "get_available_currencies",
+        staticmethod(fake_get_available_currencies),
+    )
+
+    token = create_access_token({"sub": "admin"})
+    response = exchange_client.get(
+        "/api/rates/currencies",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "currencies": {"AUD": "Australian Dollar", "CAD": "Canadian Dollar"}
+    }
+
+def test_currencies_endpoint_returns_502_on_exchange_service_error(
+    exchange_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    async def fake_get_available_currencies() -> dict:
+        raise ExchangeRateError("Failed to retrieve supported currencies")
+
+    monkeypatch.setattr(
+        ExchangeService,
+        "get_available_currencies",
+        staticmethod(fake_get_available_currencies),
+    )
+
+    token = create_access_token({"sub": "admin"})
+    response = exchange_client.get(
+        "/api/rates/currencies",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 502
+    assert response.json() == {"detail": "Failed to retrieve supported currencies"}
+
+def test_currencies_endpoint_requires_authentication(exchange_client: TestClient):
+    response = exchange_client.get("/api/rates/currencies")
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Not authenticated"}
