@@ -44,6 +44,34 @@ class ExchangeService:
                 raise ExchangeRateError("Failed to retrieve current exchange rates") from e
 
     @staticmethod
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type((httpx.RequestError, httpx.HTTPStatusError)),
+        reraise=True
+    )
+    async def get_available_currencies() -> dict:
+        """Get supported currency symbols and full names."""
+        cache_key = "currencies"
+
+        if cache_key in rates_cache:
+            logger.info("Retrieving supported currencies from cache")
+            return rates_cache[cache_key]
+
+        logger.info(f"Fetching supported currencies from {settings.api_url}")
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.get(f"{settings.api_url}/currencies", timeout=5.0)
+                response.raise_for_status()
+                data = response.json()
+
+                rates_cache[cache_key] = data
+                return data
+            except httpx.HTTPError as e:
+                logger.error(f"Error occurred while fetching supported currencies: {str(e)}")
+                raise ExchangeRateError("Failed to retrieve supported currencies") from e
+
+    @staticmethod
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
     async def get_historical_rates(base: str, start_date: str, end_date: str, symbols: list[str]) -> dict:
         """Auxiliary method for FR4 - Obtaining history for a period."""

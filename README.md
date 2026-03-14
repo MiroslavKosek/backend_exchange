@@ -166,6 +166,9 @@ Authorization: Bearer <JWT>
 - `GET /api/rates/latest?base=EUR`
 	- Returns current rates for the base currency.
 
+- `GET /api/rates/currencies`
+	- Returns supported currency symbols with their full names.
+
 - `GET /api/rates/analytics/extremes?base=EUR`
 	- Returns strongest and weakest currency for current rates.
 
@@ -231,3 +234,4 @@ Container serves on port `8000` and starts with Gunicorn + Uvicorn workers.
 
 - Exchange data source is Frankfurter API (`https://api.frankfurter.dev/v1`)
 - Latest-rate requests are cached for 15 minutes (TTL cache)
+- Supported-currencies responses are cached for 15 minutes (TTL cache)
