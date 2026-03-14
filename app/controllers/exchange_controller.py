@@ -8,6 +8,18 @@ from app.services.exchange import ExchangeRateError, ExchangeService
 router = APIRouter(prefix="/api/rates", tags=["Exchange Rates"])
 
 
+@router.get("/currencies")
+async def get_available_currencies(
+    _current_user: str = Depends(get_current_user),
+):
+    """Get supported currency symbols and their full names."""
+    try:
+        currencies = await ExchangeService.get_available_currencies()
+        return {"currencies": currencies}
+    except ExchangeRateError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
+
+
 @router.get("/latest")
 async def get_current_rates(
     base: str = Query("EUR", description="Base currency (e.g., EUR, CZK)"),
