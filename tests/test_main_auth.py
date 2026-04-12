@@ -10,9 +10,9 @@ import jwt
 import pytest
 from fastapi.testclient import TestClient
 
-from app.auth import ALGORITHM
 from app.config import settings
 from app.main import app
+from app.services.auth_service import ALGORITHM
 
 @pytest.fixture
 def auth_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:

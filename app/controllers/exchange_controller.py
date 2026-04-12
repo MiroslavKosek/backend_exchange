@@ -2,15 +2,15 @@
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from app.auth import get_current_user
-from app.services.exchange import ExchangeRateError, ExchangeService
+from app.services.auth_service import AuthService
+from app.services.exchange_service import ExchangeRateError, ExchangeService
 
 router = APIRouter(prefix="/api/rates", tags=["Exchange Rates"])
 
 
 @router.get("/currencies")
 async def get_available_currencies(
-    _current_user: str = Depends(get_current_user),
+    _current_user: str = Depends(AuthService.get_current_user),
 ):
     """Get supported currency symbols and their full names."""
     try:
@@ -23,7 +23,7 @@ async def get_available_currencies(
 @router.get("/latest")
 async def get_current_rates(
     base: str = Query("EUR", description="Base currency (e.g., EUR, CZK)"),
-    _current_user: str = Depends(get_current_user),
+    _current_user: str = Depends(AuthService.get_current_user),
 ):
     """FR1: Get current exchange rates."""
     try:
@@ -36,7 +36,7 @@ async def get_current_rates(
 @router.get("/analytics/extremes")
 async def get_strongest_and_weakest_rates(
     base: str = Query("EUR", description="Base currency (e.g., EUR, CZK)"),
-    _current_user: str = Depends(get_current_user),
+    _current_user: str = Depends(AuthService.get_current_user),
 ):
     """FR2/FR3: Return the strongest and weakest currency for a base."""
     try:
@@ -76,7 +76,7 @@ async def get_average_rates(
         ..., description="List of currencies for averaging (e.g., USD, CZK)"
     ),
     base: str = Query("EUR", description="Base currency (e.g., EUR, CZK)"),
-    _current_user: str = Depends(get_current_user),
+    _current_user: str = Depends(AuthService.get_current_user),
 ):
     """FR4: Calculate average exchange rates for selected symbols and period."""
     try:
