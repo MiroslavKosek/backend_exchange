@@ -2,15 +2,15 @@
 
 # Pylint may not resolve app imports from conftest path setup in test context.
 # Pytest fixture argument shadowing and terse test helpers are intentional.
-# pylint: disable=import-error,missing-function-docstring,redefined-outer-name
+# pylint: disable=import-error,missing-function-docstring,redefined-outer-name,duplicate-code
 
 import pytest
 from fastapi.testclient import TestClient
 
-from app.auth import create_access_token
 from app.config import settings
 from app.main import app
-from app.services.exchange import ExchangeRateError, ExchangeService
+from app.services.auth_service import AuthService
+from app.services.exchange_service import ExchangeRateError, ExchangeService
 
 @pytest.fixture
 def exchange_analytics_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
@@ -32,7 +32,7 @@ def test_extremes_endpoint_returns_strongest_and_weakest(
 
     monkeypatch.setattr(ExchangeService, "get_latest_rates", staticmethod(fake_get_latest_rates))
 
-    token = create_access_token({"sub": "admin"})
+    token = AuthService.create_access_token({"sub": "admin"})
     response = exchange_analytics_client.get(
         "/api/rates/analytics/extremes?base=EUR",
         headers={"Authorization": f"Bearer {token}"},
@@ -55,7 +55,7 @@ def test_extremes_endpoint_returns_404_when_rates_are_empty(
 
     monkeypatch.setattr(ExchangeService, "get_latest_rates", staticmethod(fake_get_latest_rates))
 
-    token = create_access_token({"sub": "admin"})
+    token = AuthService.create_access_token({"sub": "admin"})
     response = exchange_analytics_client.get(
         "/api/rates/analytics/extremes?base=EUR",
         headers={"Authorization": f"Bearer {token}"},
@@ -75,7 +75,7 @@ def test_extremes_endpoint_returns_502_on_exchange_service_error(
 
     monkeypatch.setattr(ExchangeService, "get_latest_rates", staticmethod(fake_get_latest_rates))
 
-    token = create_access_token({"sub": "admin"})
+    token = AuthService.create_access_token({"sub": "admin"})
     response = exchange_analytics_client.get(
         "/api/rates/analytics/extremes?base=EUR",
         headers={"Authorization": f"Bearer {token}"},
@@ -118,7 +118,7 @@ def test_average_endpoint_returns_averages_for_requested_symbols(
         staticmethod(fake_get_historical_rates),
     )
 
-    token = create_access_token({"sub": "admin"})
+    token = AuthService.create_access_token({"sub": "admin"})
     response = exchange_analytics_client.get(
         "/api/rates/analytics/average"
         "?start_date=2026-03-01"
@@ -159,7 +159,7 @@ def test_average_endpoint_sets_none_for_symbol_without_any_data(
         staticmethod(fake_get_historical_rates),
     )
 
-    token = create_access_token({"sub": "admin"})
+    token = AuthService.create_access_token({"sub": "admin"})
     response = exchange_analytics_client.get(
         "/api/rates/analytics/average"
         "?start_date=2026-03-01"
@@ -190,7 +190,7 @@ def test_average_endpoint_returns_message_when_no_history(
         staticmethod(fake_get_historical_rates),
     )
 
-    token = create_access_token({"sub": "admin"})
+    token = AuthService.create_access_token({"sub": "admin"})
     response = exchange_analytics_client.get(
         "/api/rates/analytics/average"
         "?start_date=2026-03-01"
@@ -220,7 +220,7 @@ def test_average_endpoint_returns_502_on_exchange_service_error(
         staticmethod(fake_get_historical_rates),
     )
 
-    token = create_access_token({"sub": "admin"})
+    token = AuthService.create_access_token({"sub": "admin"})
     response = exchange_analytics_client.get(
         "/api/rates/analytics/average"
         "?start_date=2026-03-01"

@@ -13,6 +13,20 @@ from app.controllers.exchange_controller import router as exchange_router
 from app.controllers.general_controller import router as general_router
 from app.logger import logger, reset_request_id, set_request_id
 
+DEFAULT_CSP = "default-src 'self'"
+DOCS_CSP = (
+    "default-src 'self'; "
+    "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+    "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+    "img-src 'self' data: https:; "
+    "font-src 'self' https: data:"
+)
+
+
+def _is_docs_route(path: str) -> bool:
+    """Return True for interactive docs endpoints that load external assets."""
+    return path.startswith("/docs") or path.startswith("/redoc")
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     """Log startup and shutdown lifecycle events."""
@@ -31,14 +45,14 @@ app = FastAPI(
 
 origins = ["http://localhost:4200", "https://miroslavkosek.github.io/frontend_exchange"]
 app.add_middleware(
-    CORSMiddleware,  # ty:ignore[invalid-argument-type]
+    CORSMiddleware,
     allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 app.add_middleware(
-    GZipMiddleware,  # ty:ignore[invalid-argument-type]
+    GZipMiddleware,
     minimum_size=1000
 )
 
@@ -51,7 +65,9 @@ async def add_security_headers(request: Request, call_next):
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["X-XSS-Protection"] = "1; mode=block"
     response.headers["Referrer-Policy"] = "no-referrer"
-    response.headers["Content-Security-Policy"] = "default-src 'self'"
+    response.headers["Content-Security-Policy"] = (
+        DOCS_CSP if _is_docs_route(request.url.path) else DEFAULT_CSP
+    )
     response.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains"
     response.headers["Expect-CT"] = "max-age=86400, enforce"
     permissions_policy = (

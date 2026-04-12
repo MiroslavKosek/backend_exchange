@@ -5,12 +5,10 @@ from datetime import timedelta
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 
-from app.auth import (
+from app.services.auth_service import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
-    create_access_token,
-    get_current_user,
+    AuthService,
     oauth2_scheme,
-    revoke_token,
 )
 from app.config import settings
 from app.logger import logger
@@ -33,7 +31,7 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
         )
 
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(
+    access_token = AuthService.create_access_token(
         data={"sub": form_data.username},
         expires_delta=access_token_expires,
     )
@@ -45,13 +43,13 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
 @router.post("/token/renew")
 async def renew_token(
     token: str = Depends(oauth2_scheme),
-    current_user: str = Depends(get_current_user),
+    current_user: str = Depends(AuthService.get_current_user),
 ):
     """Revoke current token and issue a new access token for the same user."""
-    revoke_token(token)
+    AuthService.revoke_token(token)
 
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    new_access_token = create_access_token(
+    new_access_token = AuthService.create_access_token(
         data={"sub": current_user},
         expires_delta=access_token_expires,
     )
@@ -62,9 +60,9 @@ async def renew_token(
 @router.post("/logout")
 async def logout(
     token: str = Depends(oauth2_scheme),
-    current_user: str = Depends(get_current_user),
+    current_user: str = Depends(AuthService.get_current_user),
 ):
     """Revoke current token to effectively log the user out."""
-    revoke_token(token)
+    AuthService.revoke_token(token)
     logger.info(f"User {current_user} logged out.")
     return {"message": "Logged out successfully"}

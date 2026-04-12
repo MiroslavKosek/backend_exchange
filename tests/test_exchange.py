@@ -10,10 +10,10 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from app.auth import create_access_token
 from app.config import settings
 from app.main import app
-from app.services.exchange import ExchangeRateError, ExchangeService, rates_cache
+from app.services.auth_service import AuthService
+from app.services.exchange_service import ExchangeRateError, ExchangeService, rates_cache
 
 @pytest.fixture(autouse=True)
 def clear_exchange_cache():
@@ -195,7 +195,7 @@ def test_latest_rates_endpoint_returns_data_for_authorized_user(
 
     monkeypatch.setattr(ExchangeService, "get_latest_rates", staticmethod(fake_get_latest_rates))
 
-    token = create_access_token({"sub": "admin"})
+    token = AuthService.create_access_token({"sub": "admin"})
     response = exchange_client.get(
         "/api/rates/latest?base=EUR",
         headers={"Authorization": f"Bearer {token}"},
@@ -213,7 +213,7 @@ def test_latest_rates_endpoint_returns_502_on_exchange_service_error(
 
     monkeypatch.setattr(ExchangeService, "get_latest_rates", staticmethod(fake_get_latest_rates))
 
-    token = create_access_token({"sub": "admin"})
+    token = AuthService.create_access_token({"sub": "admin"})
     response = exchange_client.get(
         "/api/rates/latest?base=EUR",
         headers={"Authorization": f"Bearer {token}"},
@@ -235,7 +235,7 @@ def test_currencies_endpoint_returns_data_for_authorized_user(
         staticmethod(fake_get_available_currencies),
     )
 
-    token = create_access_token({"sub": "admin"})
+    token = AuthService.create_access_token({"sub": "admin"})
     response = exchange_client.get(
         "/api/rates/currencies",
         headers={"Authorization": f"Bearer {token}"},
@@ -259,7 +259,7 @@ def test_currencies_endpoint_returns_502_on_exchange_service_error(
         staticmethod(fake_get_available_currencies),
     )
 
-    token = create_access_token({"sub": "admin"})
+    token = AuthService.create_access_token({"sub": "admin"})
     response = exchange_client.get(
         "/api/rates/currencies",
         headers={"Authorization": f"Bearer {token}"},
