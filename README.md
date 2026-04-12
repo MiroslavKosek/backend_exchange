@@ -23,21 +23,31 @@ The service provides:
 
 ```text
 app/
-	main.py                  # FastAPI app, middleware, router registration
-	auth.py                  # JWT auth, token validation, revocation
-	config.py                # Settings loading from .env and config.json
-	logger.py                # Loguru configuration and request-id support
+	main.py                     # FastAPI app initialization, middleware, router setup
+	config.py                   # Settings management from .env and config.json
+	logger.py                   # Structured logging with Loguru and request-id context
 	controllers/
-		auth_controller.py     # /token, /token/renew, /logout
-		exchange_controller.py # /api/rates/* endpoints
-		general_controller.py  # / and /health
+		auth_controller.py        # Auth endpoints: /token, /token/renew, /logout
+		exchange_controller.py    # Exchange APIs: /api/rates/*, strongest, weakest, average
+		general_controller.py     # General endpoints: /, /health
 	services/
-		exchange.py            # API integration
+		auth_service.py           # JWT token lifecycle (create, validate, revoke with HS256)
+		exchange_service.py       # Exchange rate API client with TTL cache and retry logic
 tests/
-config.json               # default external API + logging settings
+	test_auth.py              # Unit tests for token creation, validation, revocation
+	test_main_auth.py         # Integration tests for /token endpoints
+	test_exchange.py          # Unit tests for exchange service
+	test_main_exchange.py     # Integration tests for /api/rates/* endpoints
+	conftest.py               # Pytest configuration and fixtures (token reset)
+config.json                 # Default settings for API URL and logging
 Dockerfile
 requirements.txt
 ```
+
+### Service Layer Details
+
+- **auth_service.py**: JWT token management using HS256 signing. Token revocation uses an in-memory set (`_revoked_token_ids`) which is cleared on server restart. Provides `AuthService` class with static methods: `create_access_token()`, `get_current_user()`, `revoke_token()`, `decode_and_validate_token_payload()`.
+- **exchange_service.py**: Async HTTP client for exchange rate API with Tenacity retry decorator (3 attempts, exponential backoff). Caches results for 15 minutes in `TTLCache`. Custom `ExchangeRateError` exception for error handling.
 
 ## Requirements
 
