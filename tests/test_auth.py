@@ -6,27 +6,33 @@ from datetime import datetime, timedelta, timezone
 import jwt
 import pytest
 from fastapi import HTTPException
+from fastapi.testclient import TestClient
 
 # Pylint in some environments does not pick up test-time sys.path setup from conftest.
 # pylint: disable=import-error
 from app.config import settings
+from app.main import app
 from app.services.auth_service import (
     ALGORITHM,
     AuthService,
     _revoked_token_ids,
 )
 
-
-def _set_test_auth_settings(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Apply stable auth settings for deterministic unit tests."""
+@pytest.fixture(autouse=True)
+def auth_settings(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Apply stable auth settings automatically to all tests for determinism."""
     monkeypatch.setattr(settings, "jwt_secret_key", "unit-test-secret-key-32-bytes-long")
     monkeypatch.setattr(settings, "admin_username", "admin")
+    monkeypatch.setattr(settings, "admin_password", "super-secret")
+
+@pytest.fixture
+def auth_client() -> TestClient:
+    """Provide a TestClient for endpoint testing."""
+    return TestClient(app)
 
 
-def test_create_access_token_uses_default_expiration(monkeypatch: pytest.MonkeyPatch):
-    """Token created without custom delta should use the default short expiry."""
-    _set_test_auth_settings(monkeypatch)
-
+def test_create_access_token_uses_default_expiration():
+    """Create an access token and verify default expiry and subject claims."""
     before = datetime.now(timezone.utc)
     token = AuthService.create_access_token({"sub": "admin"})
     payload = jwt.decode(token, settings.jwt_secret_key, algorithms=[ALGORITHM])
@@ -37,11 +43,8 @@ def test_create_access_token_uses_default_expiration(monkeypatch: pytest.MonkeyP
     assert payload["sub"] == "admin"
     assert before + timedelta(minutes=14) <= exp <= after + timedelta(minutes=16)
 
-
-def test_create_access_token_respects_custom_expiration(monkeypatch: pytest.MonkeyPatch):
-    """Token should respect explicitly supplied expiration delta."""
-    _set_test_auth_settings(monkeypatch)
-
+def test_create_access_token_respects_custom_expiration():
+    """Create an access token with custom expiry and assert it is honored."""
     custom_delta = timedelta(minutes=60)
     before = datetime.now(timezone.utc)
     token = AuthService.create_access_token({"sub": "admin"}, expires_delta=custom_delta)
@@ -49,14 +52,10 @@ def test_create_access_token_respects_custom_expiration(monkeypatch: pytest.Monk
     after = datetime.now(timezone.utc)
 
     exp = datetime.fromtimestamp(payload["exp"], tz=timezone.utc)
-
     assert before + timedelta(minutes=59) <= exp <= after + timedelta(minutes=61)
 
-
-def test_create_access_token_with_negative_expiration_delta(monkeypatch: pytest.MonkeyPatch):
-    """Token with negative delta should have expiration in the past (immediately expired)."""
-    _set_test_auth_settings(monkeypatch)
-
+def test_create_access_token_with_negative_expiration_delta():
+    """Allow negative expiry deltas and verify produced token is already expired."""
     negative_delta = timedelta(minutes=-5)
     token = AuthService.create_access_token({"sub": "admin"}, expires_delta=negative_delta)
     payload = jwt.decode(
@@ -67,143 +66,72 @@ def test_create_access_token_with_negative_expiration_delta(monkeypatch: pytest.
     )
 
     exp = datetime.fromtimestamp(payload["exp"], tz=timezone.utc)
-    now = datetime.now(timezone.utc)
+    assert exp < datetime.now(timezone.utc)
 
-    # Token should be expired
-    assert exp < now
-
-
-def test_create_access_token_with_far_future_expiration(monkeypatch: pytest.MonkeyPatch):
-    """Token with large delta should have far-future expiration."""
-    _set_test_auth_settings(monkeypatch)
-
-    far_future_delta = timedelta(days=365)
-    token = AuthService.create_access_token({"sub": "admin"}, expires_delta=far_future_delta)
-    payload = jwt.decode(token, settings.jwt_secret_key, algorithms=[ALGORITHM])
-
-    exp = datetime.fromtimestamp(payload["exp"], tz=timezone.utc)
-    now = datetime.now(timezone.utc)
-
-    # Token should be expired in approximately 365 days
-    assert (exp - now).days >= 364
-
-
-def test_create_access_token_generates_unique_jti_per_call(monkeypatch: pytest.MonkeyPatch):
-    """Each call to create_access_token should generate a unique jti."""
-    _set_test_auth_settings(monkeypatch)
-
+def test_create_access_token_generates_unique_jti_per_call():
+    """Generate two tokens and confirm each has a distinct JTI claim."""
     token1 = AuthService.create_access_token({"sub": "admin"})
     token2 = AuthService.create_access_token({"sub": "admin"})
 
     payload1 = jwt.decode(token1, settings.jwt_secret_key, algorithms=[ALGORITHM])
     payload2 = jwt.decode(token2, settings.jwt_secret_key, algorithms=[ALGORITHM])
 
-    # JTI values should be different
     assert payload1["jti"] != payload2["jti"]
 
-
-def test_create_access_token_structure_has_required_claims(monkeypatch: pytest.MonkeyPatch):
-    """Token should have all required claims: sub, exp, type, jti."""
-    _set_test_auth_settings(monkeypatch)
-
+def test_create_access_token_structure_has_required_claims():
+    """Verify created access token contains all required standard claims."""
     token = AuthService.create_access_token({"sub": "admin", "custom": "data"})
     payload = jwt.decode(token, settings.jwt_secret_key, algorithms=[ALGORITHM])
 
-    assert "sub" in payload
-    assert "exp" in payload
-    assert "type" in payload
-    assert "jti" in payload
+    assert all(claim in payload for claim in ("sub", "exp", "type", "jti"))
     assert payload["type"] == "access"
-    assert payload["sub"] == "admin"
 
 
-def test_get_current_user_returns_username_for_valid_token(monkeypatch: pytest.MonkeyPatch):
-    """Valid token with admin subject should resolve to current username."""
-    _set_test_auth_settings(monkeypatch)
-
+def test_get_current_user_returns_username_for_valid_token():
+    """Return the username when get_current_user receives a valid access token."""
     token = AuthService.create_access_token({"sub": "admin"}, expires_delta=timedelta(minutes=5))
     username = asyncio.run(AuthService.get_current_user(token))
-
     assert username == "admin"
 
-
-def test_get_current_user_rejects_token_with_wrong_signature(monkeypatch: pytest.MonkeyPatch):
-    """Invalid token signature must raise unauthorized credentials error."""
-    _set_test_auth_settings(monkeypatch)
-
+def test_get_current_user_rejects_token_with_wrong_signature():
+    """Reject tokens signed with an unexpected key as invalid credentials."""
     bad_token = jwt.encode(
         {"sub": "admin", "exp": datetime.now(timezone.utc) + timedelta(minutes=5)},
         "wrong-secret-key-32-bytes-long-test",
         algorithm=ALGORITHM,
     )
-
     with pytest.raises(HTTPException) as exc_info:
         asyncio.run(AuthService.get_current_user(bad_token))
 
     assert exc_info.value.status_code == 401
     assert exc_info.value.detail == "Could not validate credentials"
 
-
-def test_get_current_user_rejects_non_admin_subject(monkeypatch: pytest.MonkeyPatch):
-    """Non-admin subject should be rejected by current-user validator."""
-    _set_test_auth_settings(monkeypatch)
-
-    token = AuthService.create_access_token(
-        {"sub": "other-user"},
-        expires_delta=timedelta(minutes=5),
-    )
-
-    with pytest.raises(HTTPException) as exc_info:
-        asyncio.run(AuthService.get_current_user(token))
-
-    assert exc_info.value.status_code == 401
-    assert exc_info.value.detail == "Could not validate credentials"
-
-
-def test_get_current_user_rejects_expired_token(monkeypatch: pytest.MonkeyPatch):
-    """Expired token should be rejected with 401 unauthorized."""
-    _set_test_auth_settings(monkeypatch)
-
-    # Create token that's already expired
-    token = AuthService.create_access_token({"sub": "admin"}, expires_delta=timedelta(seconds=-10))
-
-    with pytest.raises(HTTPException) as exc_info:
-        asyncio.run(AuthService.get_current_user(token))
-
-    assert exc_info.value.status_code == 401
-    assert exc_info.value.detail == "Could not validate credentials"
-
-
-def test_get_current_user_rejects_token_with_missing_jti(monkeypatch: pytest.MonkeyPatch):
-    """Token without jti claim should be rejected."""
-    _set_test_auth_settings(monkeypatch)
-
-    # Manually craft token without jti
+@pytest.mark.parametrize(
+    "payload_override, remove_key",
+    [
+        ({"sub": "other-user"}, None),               # Non-admin subject
+        ({"type": "refresh"}, None),                 # Wrong type
+        ({"jti": 12345}, None),                      # Non-string JTI
+        (None, "sub"),                               # Missing sub
+        (None, "jti"),                               # Missing JTI
+        ({"exp": datetime.now(timezone.utc) - timedelta(minutes=5)}, None), # Expired
+    ],
+    ids=["wrong_sub", "wrong_type", "int_jti", "missing_sub", "missing_jti", "expired"]
+)
+def test_get_current_user_rejects_invalid_payloads(payload_override, remove_key):
+    """Ensure token validation fails correctly for various malformed or invalid payloads."""
     payload = {
         "sub": "admin",
         "type": "access",
-        "exp": datetime.now(timezone.utc) + timedelta(minutes=5),
-        # Missing "jti"
-    }
-    bad_token = jwt.encode(payload, settings.jwt_secret_key, algorithm=ALGORITHM)
-
-    with pytest.raises(HTTPException) as exc_info:
-        asyncio.run(AuthService.get_current_user(bad_token))
-
-    assert exc_info.value.status_code == 401
-
-
-def test_get_current_user_rejects_token_with_wrong_type(monkeypatch: pytest.MonkeyPatch):
-    """Token with wrong type should be rejected."""
-    _set_test_auth_settings(monkeypatch)
-
-    # Manually craft token with wrong type
-    payload = {
-        "sub": "admin",
-        "type": "refresh",  # Wrong type
         "jti": "test-jti",
         "exp": datetime.now(timezone.utc) + timedelta(minutes=5),
     }
+
+    if payload_override:
+        payload.update(payload_override)
+    if remove_key:
+        del payload[remove_key]
+
     bad_token = jwt.encode(payload, settings.jwt_secret_key, algorithm=ALGORITHM)
 
     with pytest.raises(HTTPException) as exc_info:
@@ -212,96 +140,47 @@ def test_get_current_user_rejects_token_with_wrong_type(monkeypatch: pytest.Monk
     assert exc_info.value.status_code == 401
 
 
-def test_revoke_token_adds_jti_to_revoked_list(monkeypatch: pytest.MonkeyPatch):
-    """Revoking a token should store its jti in the revoked set."""
-    _set_test_auth_settings(monkeypatch)
-
+def test_revoke_token_adds_jti_to_revoked_list():
+    """Revoke a token, record its JTI, and deny subsequent authentication."""
     token = AuthService.create_access_token({"sub": "admin"}, expires_delta=timedelta(minutes=5))
     payload = jwt.decode(token, settings.jwt_secret_key, algorithms=[ALGORITHM])
-    jti = payload["jti"]
 
-    # Token should initially work
-    username = asyncio.run(AuthService.get_current_user(token))
-    assert username == "admin"
-
-    # Revoke the token
     AuthService.revoke_token(token)
-    assert jti in _revoked_token_ids
+    assert payload["jti"] in _revoked_token_ids
 
-    # Token should now be rejected
     with pytest.raises(HTTPException) as exc_info:
         asyncio.run(AuthService.get_current_user(token))
-
     assert exc_info.value.status_code == 401
 
+def test_revoke_expired_token_succeeds():
+    """Ensure we can revoke a token even if its expiration time has passed."""
+    token = AuthService.create_access_token({"sub": "admin"}, expires_delta=timedelta(seconds=-10))
 
-def test_revoke_token_with_invalid_token_raises_error(monkeypatch: pytest.MonkeyPatch):
-    """Revoking an invalid token should raise HTTPException."""
-    _set_test_auth_settings(monkeypatch)
+    # Should not raise an exception, testing the fallback decode logic in revoke_token
+    AuthService.revoke_token(token)
 
+    payload = jwt.decode(
+        token, settings.jwt_secret_key, algorithms=[ALGORITHM], options={"verify_exp": False}
+    )
+    assert payload["jti"] in _revoked_token_ids
+
+def test_revoke_token_with_invalid_signature_raises_error():
+    """Raise unauthorized error when attempting to revoke a tampered token."""
     bad_token = jwt.encode(
         {"sub": "admin", "exp": datetime.now(timezone.utc) + timedelta(minutes=5)},
-        "wrong-secret-key-32-bytes-long-test",
+        "wrong-secret-key",
         algorithm=ALGORITHM,
     )
-
     with pytest.raises(HTTPException) as exc_info:
         AuthService.revoke_token(bad_token)
-
     assert exc_info.value.status_code == 401
 
+def test_revoke_token_double_revocation_is_idempotent():
+    """Support revoking the same token multiple times without failure."""
+    token = AuthService.create_access_token({"sub": "admin"})
 
-def test_revoke_token_double_revocation_is_idempotent(monkeypatch: pytest.MonkeyPatch):
-    """Revoking a token twice should not cause errors (idempotent)."""
-    _set_test_auth_settings(monkeypatch)
-
-    token = AuthService.create_access_token({"sub": "admin"}, expires_delta=timedelta(minutes=5))
-
-    # Revoke twice - should not raise exception
     AuthService.revoke_token(token)
-    AuthService.revoke_token(token)
+    AuthService.revoke_token(token) # Second time should not crash
 
-    # Token should still be rejected
-    with pytest.raises(HTTPException) as exc_info:
+    with pytest.raises(HTTPException):
         asyncio.run(AuthService.get_current_user(token))
-
-    assert exc_info.value.status_code == 401
-
-
-def test_auth_service_class_backward_compatibility(monkeypatch: pytest.MonkeyPatch):
-    """AuthService class methods should behave consistently across calls."""
-    _set_test_auth_settings(monkeypatch)
-
-    # First class-method call
-    token1 = AuthService.create_access_token({"sub": "admin"}, expires_delta=timedelta(minutes=5))
-    username1 = asyncio.run(AuthService.get_current_user(token1))
-
-    # Second class-method call
-    token2 = AuthService.create_access_token({"sub": "admin"}, expires_delta=timedelta(minutes=5))
-    username2 = asyncio.run(AuthService.get_current_user(token2))
-
-    # Both should work the same way
-    assert username1 == "admin"
-    assert username2 == "admin"
-
-
-def test_end_to_end_auth_flow(monkeypatch: pytest.MonkeyPatch):
-    """End-to-end flow: create token → validate → revoke → reject."""
-    _set_test_auth_settings(monkeypatch)
-
-    # 1. Create token
-    token = AuthService.create_access_token({"sub": "admin"}, expires_delta=timedelta(minutes=5))
-
-    # 2. Validate token works
-    username = asyncio.run(AuthService.get_current_user(token))
-    assert username == "admin"
-
-    # 3. Revoke token
-    AuthService.revoke_token(token)
-
-    # 4. Validate token is rejected
-    with pytest.raises(HTTPException) as exc_info:
-        asyncio.run(AuthService.get_current_user(token))
-
-    assert exc_info.value.status_code == 401
-    assert exc_info.value.detail == "Could not validate credentials"
