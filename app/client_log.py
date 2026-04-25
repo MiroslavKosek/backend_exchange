@@ -8,6 +8,6 @@ class ClientLog(BaseModel):
     level: int
     timestamp: str
     fileName: Optional[str] = None
-    lineNumber: Optional[str] = None
+    lineNumber: Optional[int] = None
     message: str
     additional: Optional[List[Any]] = []
