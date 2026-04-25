@@ -24,18 +24,27 @@ class ExchangeService:
         retry=retry_if_exception_type((httpx.RequestError, httpx.HTTPStatusError)),
         reraise=True,
     )
-    async def get_latest_rates(base: str) -> dict:
+    async def get_latest_rates(base: str, symbols: list[str]) -> dict:
         """FR1 - Getting current exchange rates."""
-        cache_key = f"latest_{base}"
+        cache_key = f"latest_{base}_{'_'.join(sorted(symbols))}"
 
         # Check cache first
         if cache_key in rates_cache:
-            logger.debug(f"Cache HIT for latest rates with base currency: '{base}'")
+            logger.debug(
+                f"Cache HIT for latest rates with base currency: '{base}' and symbols: {symbols}"
+            )
             return rates_cache[cache_key]
 
-        logger.debug(f"Cache MISS for latest rates with base currency: '{base}'.")
+        logger.debug(
+            f"Cache MISS for latest rates with base currency: '{base}' and symbols: {symbols}"
+        )
         target_url = f"{settings.api_url}/latest?base={base}"
-        logger.info(f"Fetching fresh data for '{base}' from external API: {target_url}")
+        if symbols:
+            target_url += f"&symbols={','.join(symbols)}"
+        logger.info(
+            f"Fetching fresh data for '{base}' "
+            f"with symbols {symbols} from external API: {target_url}"
+        )
 
         async with httpx.AsyncClient() as client:
             try:
@@ -47,14 +56,15 @@ class ExchangeService:
                 # Cache the result
                 rates_cache[cache_key] = data
                 logger.debug(
-                    f"Successfully cached latest rates for '{base}'. "
+                    f"Successfully cached latest rates for '{base}' with symbols {symbols}. "
                     f"Total keys in payload: {len(data.get('rates', {}))}"
                 )
                 return data
             except httpx.HTTPError as e:
                 logger.error(f"HTTPError communicating with external API at {target_url}: {str(e)}")
                 raise ExchangeRateError(
-                    f"Failed to retrieve current exchange rates for base '{base}'"
+                    f"Failed to retrieve current exchange rates "
+                    f"for base '{base}' and symbols {symbols}"
                 ) from e
 
     @staticmethod

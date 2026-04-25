@@ -14,7 +14,9 @@ async def get_available_currencies(
     _current_user: str = Depends(AuthService.get_current_user),
 ):
     """Get supported currency symbols and their full names."""
-    logger.info("Fetching available currencies.")
+    logger.info(
+        f"User: '{_current_user}' requested available currencies."
+    )
     try:
         currencies = await ExchangeService.get_available_currencies()
         logger.debug(f"Successfully retrieved {len(currencies)} currencies.")
@@ -27,12 +29,17 @@ async def get_available_currencies(
 @router.get("/latest")
 async def get_current_rates(
     base: str = Query("EUR", description="Base currency (e.g., EUR, CZK)"),
+    symbols: list[str] = Query(
+        ..., description="List of currencies for averaging (e.g., USD, CZK)"
+    ),
     _current_user: str = Depends(AuthService.get_current_user),
 ):
     """FR1: Get current exchange rates."""
-    logger.info(f"Fetching latest rates for base currency: '{base}'")
+    logger.info(
+        f"User: '{_current_user}' requested latest rates. Base: '{base}', Symbols: {symbols}"
+    )
     try:
-        data = await ExchangeService.get_latest_rates(base)
+        data = await ExchangeService.get_latest_rates(base, symbols)
         logger.debug(f"Retrieved latest rates for '{base}' dated {data['date']}.")
         return {"base": data["base"], "date": data["date"], "rates": data["rates"]}
     except ExchangeRateError as e:
@@ -43,13 +50,19 @@ async def get_current_rates(
 @router.get("/analytics/extremes")
 async def get_strongest_and_weakest_rates(
     base: str = Query("EUR", description="Base currency (e.g., EUR, CZK)"),
+    symbols: list[str] = Query(
+        ..., description="List of currencies for averaging (e.g., USD, CZK)"
+    ),
     _current_user: str = Depends(AuthService.get_current_user),
 ):
     """FR2/FR3: Return the strongest and weakest currency for a base."""
-    logger.info(f"Calculating strongest and weakest currencies against base: '{base}'")
+    logger.info(
+        f"User: '{_current_user}' requested strongest and weakest rates. "
+        f"Calculating strongest and weakest currencies. Base: '{base}', Symbols: {symbols}"
+    )
     try:
         logger.debug("Requesting latest rates for extreme calculation.")
-        data = await ExchangeService.get_latest_rates(base)
+        data = await ExchangeService.get_latest_rates(base, symbols)
         rates = data.get("rates", {})
 
         if not rates:
@@ -88,16 +101,17 @@ async def get_strongest_and_weakest_rates(
 
 @router.get("/analytics/average")
 async def get_average_rates(
-    start_date: str = Query(..., description="Start date (YYYY-MM-DD)"),
-    end_date: str = Query(..., description="End date (YYYY-MM-DD)"),
+    base: str = Query("EUR", description="Base currency (e.g., EUR, CZK)"),
     symbols: list[str] = Query(
         ..., description="List of currencies for averaging (e.g., USD, CZK)"
     ),
-    base: str = Query("EUR", description="Base currency (e.g., EUR, CZK)"),
+    start_date: str = Query(..., description="Start date (YYYY-MM-DD)"),
+    end_date: str = Query(..., description="End date (YYYY-MM-DD)"),
     _current_user: str = Depends(AuthService.get_current_user),
 ):
     """FR4: Calculate average exchange rates for selected symbols and period."""
     logger.info(
+        f"User: '{_current_user}' requested average rates."
         f"Calculating average rates from {start_date} to {end_date} for base '{base}'. "
         f"Target symbols: {symbols}"
     )
