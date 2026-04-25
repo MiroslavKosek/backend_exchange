@@ -26,7 +26,9 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
         form_data.username != settings.admin_username
         or form_data.password != settings.admin_password
     ):
-        logger.warning(f"Failed login attempt for username: '{form_data.username}' - Invalid credentials.")
+        logger.warning(
+            f"Failed login attempt for username: '{form_data.username}' - Invalid credentials."
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid username or password",

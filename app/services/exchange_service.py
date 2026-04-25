@@ -46,11 +46,16 @@ class ExchangeService:
 
                 # Cache the result
                 rates_cache[cache_key] = data
-                logger.debug(f"Successfully cached latest rates for '{base}'. Total keys in payload: {len(data.get('rates', {}))}")
+                logger.debug(
+                    f"Successfully cached latest rates for '{base}'. "
+                    f"Total keys in payload: {len(data.get('rates', {}))}"
+                )
                 return data
             except httpx.HTTPError as e:
                 logger.error(f"HTTPError communicating with external API at {target_url}: {str(e)}")
-                raise ExchangeRateError(f"Failed to retrieve current exchange rates for base '{base}'") from e
+                raise ExchangeRateError(
+                    f"Failed to retrieve current exchange rates for base '{base}'"
+                ) from e
 
     @staticmethod
     @retry(
@@ -93,8 +98,9 @@ class ExchangeService:
     ) -> dict:
         """Auxiliary method for FR4 - Obtaining history for a period."""
         symbols_str = ",".join(symbols)
-        target_url = f"{settings.api_url}/{start_date}..{end_date}?base={base}&symbols={symbols_str}"
-        
+        target_url = f"{settings.api_url}/{start_date}..{end_date}"
+        target_url += f"?base={base}&symbols={symbols_str}"
+
         logger.info(f"Fetching historical rates for '{base}' from {start_date} to {end_date}.")
         logger.debug(f"Historical rates external API request: {target_url}")
 
@@ -103,11 +109,15 @@ class ExchangeService:
                 response = await client.get(target_url, timeout=5.0)
                 response.raise_for_status()
                 data = response.json()
-                
-                logger.debug(f"Successfully retrieved historical rates. Days fetched: {len(data.get('rates', {}))}")
+
+                logger.debug(
+                    "Successfully retrieved historical rates. "
+                    f"Days fetched: {len(data.get('rates', {}))}"
+                )
                 return data
             except httpx.HTTPError as e:
                 logger.error(f"HTTPError fetching historical data from {target_url}: {str(e)}")
                 raise ExchangeRateError(
-                    f"Failed to retrieve historical exchange rates between {start_date} and {end_date}"
+                    "Failed to retrieve historical exchange rates "
+                    f"between {start_date} and {end_date}"
                 ) from e

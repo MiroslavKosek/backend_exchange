@@ -77,7 +77,9 @@ class AuthService:
         username = str(username_raw)
         # Validate admin username matches
         if username != settings.admin_username:
-            logger.warning(f"Token validation failed: username '{username}' is not the configured admin")
+            logger.warning(
+                f"Token validation failed: username '{username}' is not the configured admin"
+            )
             raise credentials_exception
 
         logger.info(f"Token validated successfully for user: '{username}'")
@@ -108,7 +110,9 @@ class AuthService:
         )
 
         encoded_jwt = jwt.encode(to_encode, settings.jwt_secret_key, algorithm=ALGORITHM)
-        logger.info(f"Access token created successfully for subject: '{data.get('sub')}' (jti: {token_id})")
+        logger.info(
+            f"Access token created successfully for subject: '{data.get('sub')}' (jti: {token_id})"
+        )
         return encoded_jwt
 
     @staticmethod

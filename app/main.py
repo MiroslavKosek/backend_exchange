@@ -109,7 +109,7 @@ async def request_id_middleware(request: Request, call_next):
         duration_ms = (perf_counter() - start) * 1000
         logger.critical(
             f"Unhandled catastrophic error during {request.method} {request.url.path}: {str(e)} "
-            f"(Duration: {duration_ms:.2f} ms)", 
+            f"(Duration: {duration_ms:.2f} ms)",
             exc_info=True
         )
         raise

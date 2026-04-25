@@ -53,7 +53,9 @@ async def get_strongest_and_weakest_rates(
         rates = data.get("rates", {})
 
         if not rates:
-            logger.warning(f"No exchange rates returned for base '{base}'. Cannot calculate extremes.")
+            logger.warning(
+                f"No exchange rates returned for base '{base}'. Cannot calculate extremes."
+            )
             raise HTTPException(
                 status_code=404,
                 detail="No exchange rates available for the specified base currency.",
