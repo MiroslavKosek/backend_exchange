@@ -24,29 +24,48 @@ class ExchangeService:
         retry=retry_if_exception_type((httpx.RequestError, httpx.HTTPStatusError)),
         reraise=True,
     )
-    async def get_latest_rates(base: str) -> dict:
+    async def get_latest_rates(base: str, symbols: list[str]) -> dict:
         """FR1 - Getting current exchange rates."""
-        cache_key = f"latest_{base}"
+        cache_key = f"latest_{base}_{'_'.join(sorted(symbols))}"
 
         # Check cache first
         if cache_key in rates_cache:
-            logger.info(f"Retrieving data from cache for base currency: {base}")
+            logger.debug(
+                f"Cache HIT for latest rates with base currency: '{base}' and symbols: {symbols}"
+            )
             return rates_cache[cache_key]
 
-        logger.info(f"Fetching fresh data for {base} from {settings.api_url}")
+        logger.debug(
+            f"Cache MISS for latest rates with base currency: '{base}' and symbols: {symbols}"
+        )
+        target_url = f"{settings.api_url}/latest?base={base}"
+        if symbols:
+            target_url += f"&symbols={','.join(symbols)}"
+        logger.info(
+            f"Fetching fresh data for '{base}' "
+            f"with symbols {symbols} from external API: {target_url}"
+        )
+
         async with httpx.AsyncClient() as client:
             try:
                 # Timeout set to 5 seconds to prevent hanging requests
-                response = await client.get(f"{settings.api_url}/latest?base={base}", timeout=5.0)
+                response = await client.get(target_url, timeout=5.0)
                 response.raise_for_status()
                 data = response.json()
 
                 # Cache the result
                 rates_cache[cache_key] = data
+                logger.debug(
+                    f"Successfully cached latest rates for '{base}' with symbols {symbols}. "
+                    f"Total keys in payload: {len(data.get('rates', {}))}"
+                )
                 return data
             except httpx.HTTPError as e:
-                logger.error(f"Error occurred while communicating with API: {str(e)}")
-                raise ExchangeRateError("Failed to retrieve current exchange rates") from e
+                logger.error(f"HTTPError communicating with external API at {target_url}: {str(e)}")
+                raise ExchangeRateError(
+                    f"Failed to retrieve current exchange rates "
+                    f"for base '{base}' and symbols {symbols}"
+                ) from e
 
     @staticmethod
     @retry(
@@ -60,20 +79,23 @@ class ExchangeService:
         cache_key = "currencies"
 
         if cache_key in rates_cache:
-            logger.info("Retrieving supported currencies from cache")
+            logger.debug("Cache HIT for available currencies.")
             return rates_cache[cache_key]
 
-        logger.info(f"Fetching supported currencies from {settings.api_url}")
+        target_url = f"{settings.api_url}/currencies"
+        logger.info(f"Cache MISS. Fetching supported currencies from external API: {target_url}")
+
         async with httpx.AsyncClient() as client:
             try:
-                response = await client.get(f"{settings.api_url}/currencies", timeout=5.0)
+                response = await client.get(target_url, timeout=5.0)
                 response.raise_for_status()
                 data = response.json()
 
                 rates_cache[cache_key] = data
+                logger.debug(f"Successfully cached available currencies. Total items: {len(data)}")
                 return data
             except httpx.HTTPError as e:
-                logger.error(f"Error occurred while fetching supported currencies: {str(e)}")
+                logger.error(f"HTTPError fetching available currencies from {target_url}: {str(e)}")
                 raise ExchangeRateError("Failed to retrieve supported currencies") from e
 
     @staticmethod
@@ -86,13 +108,26 @@ class ExchangeService:
     ) -> dict:
         """Auxiliary method for FR4 - Obtaining history for a period."""
         symbols_str = ",".join(symbols)
-        url = f"{settings.api_url}/{start_date}..{end_date}?base={base}&symbols={symbols_str}"
+        target_url = f"{settings.api_url}/{start_date}..{end_date}"
+        target_url += f"?base={base}&symbols={symbols_str}"
+
+        logger.info(f"Fetching historical rates for '{base}' from {start_date} to {end_date}.")
+        logger.debug(f"Historical rates external API request: {target_url}")
 
         async with httpx.AsyncClient() as client:
             try:
-                response = await client.get(url, timeout=5.0)
+                response = await client.get(target_url, timeout=5.0)
                 response.raise_for_status()
-                return response.json()
+                data = response.json()
+
+                logger.debug(
+                    "Successfully retrieved historical rates. "
+                    f"Days fetched: {len(data.get('rates', {}))}"
+                )
+                return data
             except httpx.HTTPError as e:
-                logger.error(f"Error occurred while fetching historical data: {str(e)}")
-                raise ExchangeRateError("Failed to retrieve historical exchange rates") from e
+                logger.error(f"HTTPError fetching historical data from {target_url}: {str(e)}")
+                raise ExchangeRateError(
+                    "Failed to retrieve historical exchange rates "
+                    f"between {start_date} and {end_date}"
+                ) from e
