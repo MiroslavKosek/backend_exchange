@@ -5,6 +5,7 @@
 # pylint: disable=import-error,missing-function-docstring,missing-class-docstring,redefined-outer-name
 
 import asyncio
+from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
@@ -26,162 +27,84 @@ def exchange_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     monkeypatch.setattr(settings, "jwt_secret_key", "unit-test-secret-key-32-bytes-long")
     return TestClient(app)
 
-def test_get_latest_rates_returns_cached_data_without_http_call(monkeypatch: pytest.MonkeyPatch):
+@patch("httpx.AsyncClient.get")
+def test_get_latest_rates_returns_cached_data_without_http_call(mock_get):
+    # Setup cache for EUR base and CZK symbol
     cached = {"base": "EUR", "date": "2026-03-08", "rates": {"CZK": 25.0}}
-    rates_cache["latest_EUR"] = cached
+    rates_cache["latest_EUR_CZK"] = cached
 
-    class ShouldNotBeCalledClient:
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, exc_type, exc, tb):
-            return False
-
-        async def get(self, *_args, **_kwargs):
-            raise AssertionError("HTTP client should not be called on cache hit")
-
-    monkeypatch.setattr(httpx, "AsyncClient", ShouldNotBeCalledClient)
-
-    data = asyncio.run(ExchangeService.get_latest_rates("EUR"))
+    data = asyncio.run(ExchangeService.get_latest_rates("EUR", ["CZK"]))
 
     assert data == cached
+    mock_get.assert_not_called()
 
-def test_get_latest_rates_fetches_and_caches_data(monkeypatch: pytest.MonkeyPatch):
+@patch("httpx.AsyncClient.get")
+def test_get_latest_rates_fetches_and_caches_data(mock_get):
     expected = {"base": "USD", "date": "2026-03-08", "rates": {"EUR": 0.91}}
 
-    class DummyResponse:
-        def raise_for_status(self):
-            return None
+    # Use MagicMock here so .json() behaves as a normal synchronous method
+    mock_response = MagicMock()
+    mock_response.raise_for_status.return_value = None
+    mock_response.json.return_value = expected
+    mock_get.return_value = mock_response
 
-        def json(self):
-            return expected
-
-    class DummyAsyncClient:
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, exc_type, exc, tb):
-            return False
-
-        async def get(self, url: str, timeout: float):
-            assert "latest?base=USD" in url
-            assert timeout == 5.0
-            return DummyResponse()
-
-    monkeypatch.setattr(httpx, "AsyncClient", DummyAsyncClient)
-
-    data = asyncio.run(ExchangeService.get_latest_rates("USD"))
+    data = asyncio.run(ExchangeService.get_latest_rates("USD", ["EUR"]))
 
     assert data == expected
-    assert rates_cache["latest_USD"] == expected
+    assert rates_cache["latest_USD_EUR"] == expected
+    mock_get.assert_called_once()
+    assert "latest?base=USD&symbols=EUR" in mock_get.call_args[0][0]
 
-def test_get_latest_rates_converts_http_error_to_domain_error(monkeypatch: pytest.MonkeyPatch):
+@patch("httpx.AsyncClient.get")
+def test_get_latest_rates_converts_http_error_to_domain_error(mock_get):
     request = httpx.Request("GET", "https://example.test/latest?base=EUR")
 
-    class FailingResponse:
-        def raise_for_status(self):
-            raise httpx.HTTPStatusError(
-                "bad status",
-                request=request,
-                response=httpx.Response(500, request=request),
-            )
-
-        def json(self):
-            return {}
-
-    class DummyAsyncClient:
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, exc_type, exc, tb):
-            return False
-
-        async def get(self, *_args, **_kwargs):
-            return FailingResponse()
-
-    monkeypatch.setattr(httpx, "AsyncClient", DummyAsyncClient)
+    mock_response = MagicMock()
+    mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+        "bad status",
+        request=request,
+        response=httpx.Response(500, request=request),
+    )
+    mock_get.return_value = mock_response
 
     with pytest.raises(ExchangeRateError, match="Failed to retrieve current exchange rates"):
-        asyncio.run(ExchangeService.get_latest_rates("EUR"))
+        asyncio.run(ExchangeService.get_latest_rates("EUR", ["CZK"]))
 
-def test_get_available_currencies_returns_cached_data_without_http_call(
-    monkeypatch: pytest.MonkeyPatch,
-):
+@patch("httpx.AsyncClient.get")
+def test_get_available_currencies_returns_cached_data_without_http_call(mock_get):
     cached = {"USD": "United States Dollar", "CZK": "Czech Koruna"}
     rates_cache["currencies"] = cached
-
-    class ShouldNotBeCalledClient:
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, exc_type, exc, tb):
-            return False
-
-        async def get(self, *_args, **_kwargs):
-            raise AssertionError("HTTP client should not be called on cache hit")
-
-    monkeypatch.setattr(httpx, "AsyncClient", ShouldNotBeCalledClient)
 
     data = asyncio.run(ExchangeService.get_available_currencies())
 
     assert data == cached
+    mock_get.assert_not_called()
 
-def test_get_available_currencies_fetches_and_caches_data(monkeypatch: pytest.MonkeyPatch):
+@patch("httpx.AsyncClient.get")
+def test_get_available_currencies_fetches_and_caches_data(mock_get):
     expected = {"AUD": "Australian Dollar", "CHF": "Swiss Franc"}
 
-    class DummyResponse:
-        def raise_for_status(self):
-            return None
-
-        def json(self):
-            return expected
-
-    class DummyAsyncClient:
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, exc_type, exc, tb):
-            return False
-
-        async def get(self, url: str, timeout: float):
-            assert url.endswith("/currencies")
-            assert timeout == 5.0
-            return DummyResponse()
-
-    monkeypatch.setattr(httpx, "AsyncClient", DummyAsyncClient)
+    mock_response = MagicMock()
+    mock_response.raise_for_status.return_value = None
+    mock_response.json.return_value = expected
+    mock_get.return_value = mock_response
 
     data = asyncio.run(ExchangeService.get_available_currencies())
 
     assert data == expected
     assert rates_cache["currencies"] == expected
 
-def test_get_available_currencies_converts_http_error_to_domain_error(
-    monkeypatch: pytest.MonkeyPatch,
-):
+@patch("httpx.AsyncClient.get")
+def test_get_available_currencies_converts_http_error_to_domain_error(mock_get):
     request = httpx.Request("GET", "https://example.test/currencies")
 
-    class FailingResponse:
-        def raise_for_status(self):
-            raise httpx.HTTPStatusError(
-                "bad status",
-                request=request,
-                response=httpx.Response(500, request=request),
-            )
-
-        def json(self):
-            return {}
-
-    class DummyAsyncClient:
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, exc_type, exc, tb):
-            return False
-
-        async def get(self, *_args, **_kwargs):
-            return FailingResponse()
-
-    monkeypatch.setattr(httpx, "AsyncClient", DummyAsyncClient)
+    mock_response = MagicMock()
+    mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+        "bad status",
+        request=request,
+        response=httpx.Response(500, request=request),
+    )
+    mock_get.return_value = mock_response
 
     with pytest.raises(ExchangeRateError, match="Failed to retrieve supported currencies"):
         asyncio.run(ExchangeService.get_available_currencies())
@@ -190,14 +113,15 @@ def test_latest_rates_endpoint_returns_data_for_authorized_user(
     exchange_client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
 ):
-    async def fake_get_latest_rates(base: str) -> dict:
+    async def fake_get_latest_rates(base: str, symbols: list[str]) -> dict:
+        _ = (base, symbols)  # Avoid unused parameter warnings
         return {"base": base, "date": "2026-03-08", "rates": {"CZK": 25.0}}
 
     monkeypatch.setattr(ExchangeService, "get_latest_rates", staticmethod(fake_get_latest_rates))
 
     token = AuthService.create_access_token({"sub": "admin"})
     response = exchange_client.get(
-        "/api/rates/latest?base=EUR",
+        "/api/rates/latest?base=EUR&symbols=CZK",
         headers={"Authorization": f"Bearer {token}"},
     )
 
@@ -208,14 +132,15 @@ def test_latest_rates_endpoint_returns_502_on_exchange_service_error(
     exchange_client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
 ):
-    async def fake_get_latest_rates(_base: str) -> dict:
+    async def fake_get_latest_rates(_base: str, _symbols: list[str]) -> dict:
+        _ = (_base, _symbols)  # Avoid unused parameter warnings
         raise ExchangeRateError("Failed to retrieve current exchange rates")
 
     monkeypatch.setattr(ExchangeService, "get_latest_rates", staticmethod(fake_get_latest_rates))
 
     token = AuthService.create_access_token({"sub": "admin"})
     response = exchange_client.get(
-        "/api/rates/latest?base=EUR",
+        "/api/rates/latest?base=EUR&symbols=CZK",
         headers={"Authorization": f"Bearer {token}"},
     )
 
