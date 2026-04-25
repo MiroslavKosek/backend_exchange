@@ -32,9 +32,11 @@ async def lifespan(_app: FastAPI):
     """Log startup and shutdown lifecycle events."""
     # Startup
     logger.info("Application starting...")
+    logger.debug("Initializing resources and connecting to external services.")
     yield
     # Shutdown
     logger.info("Application shutting down...")
+    logger.debug("Cleaning up resources.")
 
 app = FastAPI(
     title="Exchange Rate API Backend",
@@ -84,19 +86,35 @@ async def request_id_middleware(request: Request, call_next):
     request_id = request.headers.get("X-Request-ID") or str(uuid4())
     start = perf_counter()
     token = set_request_id(request_id)
+
     try:
         with logger.contextualize(request_id=request_id):
+            client_ip = request.client.host if request.client else "-"
+            logger.info(f"Incoming Request: {request.method} {request.url.path} from {client_ip}")
+
+            if request.url.query:
+                logger.debug(f"Request Query Params: {request.url.query}")
+
             response = await call_next(request)
+
             duration_ms = (perf_counter() - start) * 1000
             logger.info(
-                f'{request.client.host if request.client else "-"} '
-                f'- "{request.method} {request.url.path}" {response.status_code} '
-                f'({duration_ms:.2f} ms)'
+                f"Completed Request: {request.method} {request.url.path} "
+                f"- Status: {response.status_code} - Duration: {duration_ms:.2f} ms"
             )
+
+            response.headers["X-Request-ID"] = request_id
+            return response
+    except Exception as e:
+        duration_ms = (perf_counter() - start) * 1000
+        logger.critical(
+            f"Unhandled catastrophic error during {request.method} {request.url.path}: {str(e)} "
+            f"(Duration: {duration_ms:.2f} ms)", 
+            exc_info=True
+        )
+        raise
     finally:
         reset_request_id(token)
-    response.headers["X-Request-ID"] = request_id
-    return response
 
 app.include_router(general_router)
 app.include_router(auth_router)
